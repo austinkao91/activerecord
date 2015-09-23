@@ -23,7 +23,7 @@ end
 class BelongsToOptions < AssocOptions
   def initialize(name, options = {} )
     # ...
-    default = {foreign_key: "#{name}_id".to_sym, class_name: "#{name.capitalize}", primary_key: :id}
+    default = {foreign_key: "#{name}_id".to_sym, class_name: "#{name.to_s.capitalize}", primary_key: :id}
     # default.each do |k,v|
     #   options[k] ||= v
     # end
@@ -37,10 +37,8 @@ end
 class HasManyOptions < AssocOptions
   def initialize(name, self_class_name, options = {})
     # ...
-    default = {foreign_key: "#{self_class_name.downcase}_id".to_sym, class_name: "#{name.capitalize.singularize}", primary_key: :id}
-    default.each do |k,v|
-      options[k] ||= v
-    end
+    default = {foreign_key: "#{self_class_name.downcase}_id".to_sym, class_name: "#{name.to_s.capitalize.singularize}", primary_key: :id}
+    options = default.merge(options)
     @foreign_key = options[:foreign_key]
     @class_name = options[:class_name]
     @primary_key = options[:primary_key]
@@ -52,6 +50,7 @@ module Associatable
   def belongs_to(name, options = {})
     # ...
     opts = BelongsToOptions.new(name,options)
+    self.assoc_options[name] = opts
     define_method("#{name}") do
       data = DBConnection.execute(<<-SQL, self.send(opts.foreign_key))
         SELECT
@@ -66,7 +65,18 @@ module Associatable
   end
 
   def has_many(name, options = {})
-    puts name
+    opts = HasManyOptions.new(name,self.table_name.singularize, options)
+    define_method("#{name}") do
+      data = DBConnection.execute(<<-SQL, self.send(opts.primary_key) )
+        SELECT
+          #{opts.class_name.constantize.table_name}.*
+        FROM
+          #{opts.class_name.constantize.table_name}
+        WHERE
+        #{opts.class_name.constantize.table_name}.#{opts.foreign_key} = ?
+      SQL
+      opts.model_class.parse_all(data)
+    end
     # ...
     # opts = BelongsToOptions.new(name,options)
     # define_method("#{name}") do
@@ -83,6 +93,8 @@ module Associatable
   end
 
   def assoc_options
+    @assoc_options ||= {}
+
     # Wait to implement this in Phase IVa. Modify `belongs_to`, too.
   end
 end
